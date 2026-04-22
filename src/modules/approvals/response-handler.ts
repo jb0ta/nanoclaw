@@ -18,25 +18,12 @@ import type { ResponsePayload } from '../../response-registry.js';
 import { log } from '../../log.js';
 import { writeSessionMessage } from '../../session-manager.js';
 import type { PendingApproval } from '../../types.js';
-import { ONECLI_ACTION, resolveOneCLIApproval } from './onecli-approvals.js';
 import { getApprovalHandler } from './primitive.js';
 
 export async function handleApprovalsResponse(payload: ResponsePayload): Promise<boolean> {
-  // OneCLI credential approvals — resolved via in-memory Promise first.
-  if (resolveOneCLIApproval(payload.questionId, payload.value)) {
-    return true;
-  }
-
   // DB-backed pending_approvals.
   const approval = getPendingApproval(payload.questionId);
   if (!approval) return false;
-
-  if (approval.action === ONECLI_ACTION) {
-    // Row exists but the in-memory resolver is gone (timer fired or the process
-    // was in a weird state). Nothing to do — just drop the row.
-    deletePendingApproval(payload.questionId);
-    return true;
-  }
 
   await handleRegisteredApproval(approval, payload.value, payload.userId ?? '');
   return true;

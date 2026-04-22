@@ -6,7 +6,8 @@
  */
 import path from 'path';
 
-import { DATA_DIR } from './config.js';
+import { CREDENTIAL_PROXY_PORT, DATA_DIR } from './config.js';
+import { startCredentialProxy } from './credential-proxy.js';
 import { migrateGroupsToClaudeLocal } from './claude-md-compose.js';
 import { initDb } from './db/connection.js';
 import { runMigrations } from './db/migrations/index.js';
@@ -70,6 +71,10 @@ async function main(): Promise<void> {
   // 2. Container runtime
   ensureContainerRuntimeRunning();
   cleanupOrphans();
+
+  // 2b. Credential proxy (containers route API calls through this)
+  const proxyServer = await startCredentialProxy(CREDENTIAL_PROXY_PORT, '0.0.0.0');
+  onShutdown(() => new Promise<void>((resolve) => proxyServer.close(() => resolve())));
 
   // 3. Channel adapters
   await initChannelAdapters((adapter: ChannelAdapter): ChannelSetup => {

@@ -5,11 +5,11 @@
  */
 import { ChildProcess, execSync, spawn } from 'child_process';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 
-import { OneCLI } from '@onecli-sh/sdk';
-
-import { CONTAINER_IMAGE, DATA_DIR, GROUPS_DIR, ONECLI_API_KEY, ONECLI_URL, TIMEZONE } from './config.js';
+import { CONTAINER_IMAGE, CREDENTIAL_PROXY_PORT, DATA_DIR, GROUPS_DIR, TIMEZONE } from './config.js';
+import { detectAuthMode } from './credential-proxy.js';
 import { readContainerConfig, writeContainerConfig } from './container-config.js';
 import { CONTAINER_RUNTIME_BIN, hostGatewayArgs, readonlyMountArgs, stopContainer } from './container-runtime.js';
 import { composeGroupClaudeMd } from './claude-md-compose.js';
@@ -29,8 +29,6 @@ import {
 } from './providers/provider-container-registry.js';
 import { markContainerRunning, markContainerStopped, sessionDir, writeSessionRouting } from './session-manager.js';
 import type { AgentGroup, Session } from './types.js';
-
-const onecli = new OneCLI({ url: ONECLI_URL, apiKey: ONECLI_API_KEY });
 
 /** Active containers tracked by session ID. */
 const activeContainers = new Map<string, { process: ChildProcess; containerName: string }>();
@@ -107,17 +105,13 @@ async function spawnContainer(session: Session): Promise<void> {
 
   const mounts = buildMounts(agentGroup, session, containerConfig, contribution);
   const containerName = `nanoclaw-v2-${agentGroup.folder}-${Date.now()}`;
-  // OneCLI agent identifier is always the agent group id — stable across
-  // sessions and reversible via getAgentGroup() for approval routing.
-  const agentIdentifier = agentGroup.id;
-  const args = await buildContainerArgs(
+  const args = buildContainerArgs(
     mounts,
     containerName,
     agentGroup,
     containerConfig,
     provider,
     contribution,
-    agentIdentifier,
   );
 
   log.info('Spawning container', { sessionId: session.id, agentGroup: agentGroup.name, containerName });
@@ -372,15 +366,14 @@ function ensureRuntimeFields(
   }
 }
 
-async function buildContainerArgs(
+function buildContainerArgs(
   mounts: VolumeMount[],
   containerName: string,
   agentGroup: AgentGroup,
   containerConfig: import('./container-config.js').ContainerConfig,
   provider: string,
   providerContribution: ProviderContainerContribution,
-  agentIdentifier?: string,
-): Promise<string[]> {
+): string[] {
   const args: string[] = ['run', '--rm', '--name', containerName];
 
   // Environment — only vars read by code we don't own.
@@ -394,20 +387,25 @@ async function buildContainerArgs(
     }
   }
 
-  // OneCLI gateway — injects HTTPS_PROXY + certs so container API calls
-  // are routed through the agent vault for credential injection.
-  try {
-    if (agentIdentifier) {
-      await onecli.ensureAgent({ name: agentGroup.name, identifier: agentIdentifier });
-    }
-    const onecliApplied = await onecli.applyContainerConfig(args, { addHostMapping: false, agent: agentIdentifier });
-    if (onecliApplied) {
-      log.info('OneCLI gateway applied', { containerName });
-    } else {
-      log.warn('OneCLI gateway not applied — container will have no credentials', { containerName });
-    }
-  } catch (err) {
-    log.warn('OneCLI gateway error — container will have no credentials', { containerName, err });
+  // Credential delivery — two modes depending on what's in .env:
+  //
+  // api-key mode: use the credential proxy (a forwarding HTTP server on the
+  //   host). Containers target it via ANTHROPIC_BASE_URL so the proxy can
+  //   inject the real key into x-api-key. Must not set HTTPS_PROXY (CONNECT
+  //   tunnel encrypts the stream and blocks header injection).
+  //
+  // oauth mode: Claude Pro OAuth tokens are rejected by api.anthropic.com when
+  //   forwarded by a proxy. Instead, mount the host credentials file read-only
+  //   so the Claude Code CLI authenticates natively through its own OAuth flow.
+  //   Container HOME is /home/node; Dockerfile pre-creates /home/node/.claude.
+  const authMode = detectAuthMode();
+  if (authMode === 'api-key') {
+    const proxyUrl = `http://host.docker.internal:${CREDENTIAL_PROXY_PORT}`;
+    args.push('-e', `ANTHROPIC_BASE_URL=${proxyUrl}`);
+    args.push('-e', 'ANTHROPIC_API_KEY=placeholder');
+  } else {
+    const hostCredsFile = path.join(os.homedir(), '.claude', '.credentials.json');
+    args.push('-v', `${hostCredsFile}:/home/node/.claude/.credentials.json:ro`);
   }
 
   // Host gateway
