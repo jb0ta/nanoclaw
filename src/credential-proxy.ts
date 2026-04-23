@@ -13,6 +13,7 @@
 import { createServer, Server } from 'http';
 import { request as httpsRequest } from 'https';
 import { request as httpRequest, RequestOptions } from 'http';
+import { execSync } from 'child_process';
 
 import { readEnvFile } from './env.js';
 import { log } from './log.js';
@@ -94,10 +95,29 @@ export function startCredentialProxy(port: number, host = '127.0.0.1'): Promise<
     });
   });
 
-  // Retry on EADDRINUSE: previous process may not have released the port yet
-  // (common on rapid service restarts under systemd).
-  const MAX_RETRIES = 10;
-  const RETRY_DELAY_MS = 1000;
+  // On EADDRINUSE: kill the stale process holding the port, then retry once.
+  // A stale holder is expected on unclean restarts (systemd restart-on-failure
+  // while the previous node process hasn't fully released the socket).
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY_MS = 500;
+
+  const killPortHolder = (p: number) => {
+    try {
+      const pids = execSync(`lsof -ti :${p}`, { encoding: 'utf8' }).trim();
+      if (pids) {
+        pids.split('\n').forEach((pid) => {
+          try {
+            process.kill(parseInt(pid, 10), 'SIGTERM');
+          } catch {
+            // already gone
+          }
+        });
+        log.warn(`Credential proxy killed stale holder(s) on port ${p}`, { pids });
+      }
+    } catch {
+      // lsof not available or no holder — ignore
+    }
+  };
 
   return new Promise((resolve, reject) => {
     let attempt = 0;
@@ -112,8 +132,9 @@ export function startCredentialProxy(port: number, host = '127.0.0.1'): Promise<
     server.on('error', (err: NodeJS.ErrnoException) => {
       if (err.code === 'EADDRINUSE' && attempt < MAX_RETRIES) {
         attempt++;
-        log.warn(`Credential proxy port ${port} in use, retrying (${attempt}/${MAX_RETRIES})…`);
+        log.warn(`Credential proxy port ${port} in use, attempt ${attempt}/${MAX_RETRIES} — killing holder…`);
         server.close();
+        killPortHolder(port);
         setTimeout(tryListen, RETRY_DELAY_MS);
       } else {
         reject(err);
