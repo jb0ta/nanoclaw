@@ -1,0 +1,12 @@
+{
+  "mcpServers": {},
+  "packages": {
+    "apt": [],
+    "npm": []
+  },
+  "additionalMounts": [],
+  "skills": "all",
+  "groupName": "Nando",
+  "assistantName": "Nando",
+  "agentGroupId": "ag-1776897502416-vt5qkf"
+}

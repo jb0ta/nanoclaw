@@ -8,11 +8,24 @@ dist/
 
 # Local data & auth
 store/
-data/
 logs/
 
-# Groups - per-installation state, not tracked
-groups/*
+# data/ — ignore runtime artifacts, track agent-group session config
+data/v2.db
+data/v2.db-shm
+data/v2.db-wal
+data/v2-sessions/
+data/env/
+data/ipc/
+data/cli.sock
+data/telegram-pairings.json
+
+# Groups — ignore runtime state, track CLAUDE.md and container config
+groups/*/CLAUDE.local.md
+groups/*/memory/
+groups/*/.claude/
+groups/*/agent-runner-src/
+# track: groups/*/CLAUDE.md  groups/*/container.json  groups/*/skills/
 
 # Composer-managed CLAUDE.md artifacts (regenerated every spawn) and
 # per-group memory (CLAUDE.local.md) must never be committed.

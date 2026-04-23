@@ -1,6 +1,7 @@
 #!/bin/bash
-# Auto-backup: stage, commit (only if changes exist), and push to backup remote.
-# Designed to be run from cron — exits 0 silently when there is nothing to commit.
+# Auto-backup: stage everything (including session skills and group configs),
+# commit only if there are changes, then push to both private and backup remotes.
+# Exits 0 silently when nothing to commit.
 
 REPO=/home/nanoclaw/nanoclaw
 LOG="$REPO/logs/auto-backup.log"
@@ -16,6 +17,9 @@ fi
 
 MSG="auto-backup: $(date +%Y-%m-%d_%H:%M)"
 git commit -m "$MSG" >> "$LOG" 2>&1 || exit 1
-git push private main >> "$LOG" 2>&1 || exit 1
+
+# Push to both remotes; log failures but don't abort the other push
+git push private main >> "$LOG" 2>&1 || echo "$(date -Iseconds) WARN: push to private failed" >> "$LOG"
+git push backup main  >> "$LOG" 2>&1 || echo "$(date -Iseconds) WARN: push to backup failed"  >> "$LOG"
 
 echo "$(date -Iseconds) pushed: $MSG" >> "$LOG"
