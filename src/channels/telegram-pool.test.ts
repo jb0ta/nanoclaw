@@ -93,7 +93,10 @@ function makeMockAdapter(id: string): ChannelAdapter & { deliveries: Array<{ pla
     _fireInbound(platformId: string, msg: InboundMessage) {
       _onInbound?.(platformId, null, msg);
     },
-  } as ChannelAdapter & { deliveries: Array<{ platformId: string }>; _fireInbound: (p: string, m: InboundMessage) => void };
+  } as ChannelAdapter & {
+    deliveries: Array<{ platformId: string }>;
+    _fireInbound: (p: string, m: InboundMessage) => void;
+  };
 }
 
 function makeMsg(text: string): InboundMessage {
@@ -172,7 +175,9 @@ describe('pool adapter delivery routing', () => {
 
     const received: string[] = [];
     await pool.setup({
-      onInbound: (platformId) => { received.push(platformId); },
+      onInbound: (platformId) => {
+        received.push(platformId);
+      },
       onInboundEvent: () => {},
       onMetadata: () => {},
       onAction: () => {},
@@ -238,7 +243,9 @@ describe('pool adapter delivery routing', () => {
 
     const received: string[] = [];
     await pool.setup({
-      onInbound: (platformId) => { received.push(platformId); },
+      onInbound: (platformId) => {
+        received.push(platformId);
+      },
       onInboundEvent: () => {},
       onMetadata: () => {},
       onAction: () => {},

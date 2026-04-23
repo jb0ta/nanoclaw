@@ -307,11 +307,7 @@ function buildPoolAdapter(tokens: string[]): ChannelAdapter {
       return subAdapters.some((s) => s.isConnected());
     },
 
-    async deliver(
-      platformId: string,
-      threadId: string | null,
-      message: OutboundMessage,
-    ): Promise<string | undefined> {
+    async deliver(platformId: string, threadId: string | null, message: OutboundMessage): Promise<string | undefined> {
       return adapterFor(platformId).deliver(platformId, threadId, message);
     },
 
@@ -324,9 +320,7 @@ function buildPoolAdapter(tokens: string[]): ChannelAdapter {
     },
 
     async syncConversations() {
-      const results = await Promise.all(
-        subAdapters.map((s) => s.syncConversations?.() ?? Promise.resolve([])),
-      );
+      const results = await Promise.all(subAdapters.map((s) => s.syncConversations?.() ?? Promise.resolve([])));
       return results.flat();
     },
   };
