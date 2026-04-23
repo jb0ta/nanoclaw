@@ -16,6 +16,6 @@ fi
 
 MSG="auto-backup: $(date +%Y-%m-%d_%H:%M)"
 git commit -m "$MSG" >> "$LOG" 2>&1 || exit 1
-git push backup main >> "$LOG" 2>&1 || exit 1
+git push private main >> "$LOG" 2>&1 || exit 1
 
 echo "$(date -Iseconds) pushed: $MSG" >> "$LOG"
